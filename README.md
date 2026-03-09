@@ -14,6 +14,7 @@ Proof-of-concept adaptive vector store that grows capacity like an expanding uni
 
 ```bash
 pip install numpy scipy
+```
 
 ```python
 import numpy as np
