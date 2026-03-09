@@ -37,4 +37,13 @@ print(mem.get_status())
 
 Run `python cosmoholoscale.py` for a full random-vector demo that shows expansions in action.
 
+## How it works (mental model)
 
+1. **You add vectors** — they go into live memory.  
+2. **Every addition**, we compute a lightweight differential-entropy score (the “information density” of the current cloud).  
+3. **When density crosses the cosmic threshold**, the engine triggers **dark-energy mode**:
+   - Capacity grows by the golden ratio (with gentle acceleration)  
+   - The oldest ~28 % of vectors are SVD-compressed into a single summary vector + stored low-rank “horizon” (projections + components)  
+4. **Queries** search both live vectors **and** the last few holographic horizons. Old data is approximate but still reachable.
+
+Result: the memory can grow forever without ever saying “out of memory.”
