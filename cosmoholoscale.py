@@ -5,20 +5,22 @@ import pickle
 
 
 class CosmoHoloScale:
-    """Production-ready holographic-cosmological vector memory engine
-    Auto-expands like the universe, compresses old data holographically.
-    
-    Note: compression is deliberately lossy — older data becomes approximate only."""
+    """Time-aware, lossy vector memory that keeps recent vectors exact and periodically compresses older ones using low-rank SVD.
 
-    def __init__(self, initial_capacity=100.0, dim=32, use_cosine=True):
+    The system monitors information density via differential entropy and triggers capacity expansion + compression when a threshold is crossed.
+    Compression is intentionally lossy to enable unbounded growth at the cost of approximate retrieval for historical data.
+    """
+
+    def __init__(self, initial_capacity=100.0, dim=32, use_cosine=True, verbose=True):
         self.capacity = initial_capacity
         self.dim = dim
-        self.vectors = []                    
-        self.boundaries = []                 
+        self.vectors = []                    # live vectors (exact, recent)
+        self.horizons = []                   # list of (projections, components, mean) for compressed history
         self.expansions = 0
         self.total_cost = 0.0
         self.original_total = 0.0
         self.use_cosine = use_cosine
+        self.verbose = verbose               # controls whether expansion events print messages
 
         # Indexing & caching
         self.index = None                    
@@ -110,6 +112,9 @@ class CosmoHoloScale:
         self.capacity *= expansion_factor
         self.expansions += 1
 
+        vectors_before = len(self.vectors)
+        horizons_before = len(self.horizons)
+
         if len(self.vectors) > 15:
             compress_start = int(len(self.vectors) * 0.72)
             old_data = data[compress_start:, :]
@@ -119,7 +124,7 @@ class CosmoHoloScale:
             components = Vh[:k, :]
             boundary_mean = np.mean(old_data, axis=0)
 
-            self.boundaries.append((projections, components, boundary_mean))
+            self.horizons.append((projections, components, boundary_mean))
             self.vectors = self.vectors[:compress_start] + [boundary_mean]
             self._invalidate_cache()
 
@@ -132,13 +137,15 @@ class CosmoHoloScale:
 
         self._rebuild_index()
 
-        print(
-            f"🌌 HOLO-DARK ENERGY ACTIVATED! "
-            f"Capacity {old_capacity:.1f} → {self.capacity:.1f}× | "
-            f"Expansions: {self.expansions} | "
-            f"Horizons: {len(self.boundaries)} | "
-            f"Saved ≈ {compression_loss + dark_energy_rebate:.1f}"
-        )
+        if self.verbose:
+            print(
+                f"🌌 HOLO-DARK ENERGY ACTIVATED! "
+                f"Capacity {old_capacity:.1f} → {self.capacity:.1f}× | "
+                f"Expansions: {self.expansions} | "
+                f"Horizons: {len(self.horizons)} | "
+                f"Vectors: {vectors_before} → {len(self.vectors)} | "
+                f"Saved ≈ {compression_loss + dark_energy_rebate:.1f}"
+            )
 
     def query(self, query_vec, top_k=5):
         q = np.asarray(query_vec, dtype=float).flatten()[:self.dim]
@@ -176,7 +183,7 @@ class CosmoHoloScale:
                 results.append((v, dist))
 
         # Holographic reconstructions
-        for proj, comp, bmean in self.boundaries[-4:]:
+        for proj, comp, bmean in self.horizons[-4:]:
             q_proj = ((q - bmean) @ comp.T) @ comp
             recon = bmean + q_proj
             if self.use_cosine:
@@ -190,9 +197,9 @@ class CosmoHoloScale:
         return results[:top_k]
 
     def reconstruct_from_horizon(self, horizon_idx=-1):
-        if not self.boundaries:
+        if not self.horizons:
             return None
-        proj, comp, bmean = self.boundaries[horizon_idx]
+        proj, comp, bmean = self.horizons[horizon_idx]
         return proj @ comp + bmean
 
     # ────────────────────────────────────────────────
@@ -203,18 +210,23 @@ class CosmoHoloScale:
         data = self._get_data()
         return {
             "capacity": self.capacity, "dim": self.dim, "vectors": data,
-            "boundaries": self.boundaries, "expansions": self.expansions,
+            "horizons": self.horizons, "expansions": self.expansions,
             "total_cost": self.total_cost, "original_total": self.original_total,
             "use_cosine": self.use_cosine, "adds_since_last": self.adds_since_last,
-            "cooldown": self.cooldown,
+            "cooldown": self.cooldown, "verbose": self.verbose,
         }
 
     @classmethod
     def from_state(cls, state):
-        obj = cls(initial_capacity=state["capacity"], dim=state["dim"], use_cosine=state["use_cosine"])
+        obj = cls(
+            initial_capacity=state["capacity"],
+            dim=state["dim"],
+            use_cosine=state["use_cosine"],
+            verbose=state.get("verbose", True)
+        )
         data = np.asarray(state["vectors"], dtype=float)
         obj.vectors = [row.copy() for row in data]
-        obj.boundaries = state["boundaries"]
+        obj.horizons = state["horizons"]
         obj.expansions = state["expansions"]
         obj.total_cost = state["total_cost"]
         obj.original_total = state["original_total"]
@@ -244,7 +256,7 @@ class CosmoHoloScale:
             "info_density": round(self.calculate_info_density(), 3),
             "efficiency_gain": round(min(efficiency, 100.0), 2),
             "live_vectors": len(self.vectors),
-            "num_horizons": len(self.boundaries),
+            "num_horizons": len(self.horizons),
         }
 
 
@@ -254,7 +266,7 @@ class CosmoHoloScale:
 
 if __name__ == "__main__":
     print("🚀 CosmoHoloScale PRODUCTION DEMO\n")
-    ch = CosmoHoloScale(initial_capacity=100.0, dim=32, use_cosine=True)
+    ch = CosmoHoloScale(initial_capacity=100.0, dim=32, use_cosine=True, verbose=True)
 
     np.random.seed(42)
     for i in range(280):
