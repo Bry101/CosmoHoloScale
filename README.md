@@ -33,4 +33,8 @@ for vec, dist in results:
 
 print(mem.get_status())
 
+```
+
+Run `python cosmoholoscale.py` for a full random-vector demo that shows expansions in action.
+
 
