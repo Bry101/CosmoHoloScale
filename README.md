@@ -10,6 +10,7 @@ Proof-of-concept adaptive vector store that grows capacity like an expanding uni
 
 **Current status:** v0.1 — working research prototype, **not production-scale yet**.
 
+
 ## Quick start
 
 ```bash
@@ -48,6 +49,7 @@ Run `python cosmoholoscale.py` for a full random-vector demo that shows expansio
 
 Result: the memory can grow forever without ever saying “out of memory.”
 
+
 ## Design notes / Caveats
 
 ### Cosine / Euclidean semantics
@@ -71,3 +73,22 @@ The tail of the stream is replaced by a mean vector + stored low-rank projection
 `save()` / `load()` use Python’s `pickle` for convenience.  
 **Do not load files from untrusted sources** — pickle can execute arbitrary code.  
 (The internal `to_state()` / `from_state()` API makes swapping formats easy later.)
+
+
+## Roadmap (community-driven ideas, not promises)
+- Attach user-defined payloads / IDs → return `(id, vector, distance)`  
+- Track reconstruction error (MSE or cosine fidelity) after each compression  
+- Lazy / incremental index rebuilds  
+- Optional FAISS / hnswlib backend for million-scale performance  
+- Richer horizon strategies (multiple representatives, adaptive rank, etc.)
+
+## Contributing
+Contributions, benchmarks, wild ideas, or PRs are very welcome!  
+Open an issue or PR — happy to collaborate.
+
+**MIT licensed** — fork, experiment, integrate, and build cool things.
+
+---
+
+Made with curiosity and a love for the universe 🌌  
+Feedback / offers / collab → open issues 
