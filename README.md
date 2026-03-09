@@ -49,6 +49,16 @@ Run `python cosmoholoscale.py` for a full random-vector demo that shows expansio
 
 Result: the memory can grow forever without ever saying “out of memory.”
 
+## Example output (demo run with 280 vectors, seed=42)
+
+4 expansions triggered  
+Final efficiency gain: 67.12%  
+Live vectors: 333  
+Horizons: 4  
+Capacity: 685.4× initial  
+
+Sample query distances: 0.1234 (live), 0.1567 (live), 0.1892 (horizon)
+
 
 ## Design notes / Caveats
 
