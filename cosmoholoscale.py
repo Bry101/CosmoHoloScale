@@ -2,6 +2,7 @@ import numpy as np
 from numpy.linalg import svd, slogdet, norm
 from scipy.spatial import KDTree
 import pickle
+from typing import List, Tuple, Dict, Union, Optional
 
 
 class CosmoHoloScale:
@@ -11,35 +12,41 @@ class CosmoHoloScale:
     Compression is intentionally lossy to enable unbounded growth at the cost of approximate retrieval for historical data.
     """
 
-    def __init__(self, initial_capacity=100.0, dim=32, use_cosine=True, verbose=True):
-        self.capacity = initial_capacity
-        self.dim = dim
-        self.vectors = []                    # live vectors (exact, recent)
-        self.horizons = []                   # list of (projections, components, mean) for compressed history
-        self.expansions = 0
-        self.total_cost = 0.0
-        self.original_total = 0.0
-        self.use_cosine = use_cosine
-        self.verbose = verbose               # controls whether expansion events print messages
+    def __init__(
+        self,
+        initial_capacity: float = 100.0,
+        dim: int = 32,
+        use_cosine: bool = True,
+        verbose: bool = True,
+    ):
+        self.capacity: float = initial_capacity
+        self.dim: int = dim
+        self.vectors: List[np.ndarray] = []  # live vectors (exact, recent)
+        self.horizons: List[Tuple[np.ndarray, np.ndarray, np.ndarray]] = []  # (projections, components, mean) for compressed history
+        self.expansions: int = 0
+        self.total_cost: float = 0.0          # cumulative 'energy' (norm sum) of all added vectors
+        self.original_total: float = 0.0      # tracks total 'energy' before any compression savings
+        self.use_cosine: bool = use_cosine
+        self.verbose: bool = verbose
 
         # Indexing & caching
-        self.index = None                    
-        self.data_unit = None                
-        self._data_cache = None              
+        self.index: Optional[KDTree] = None
+        self.data_unit: Optional[np.ndarray] = None
+        self._data_cache: Optional[np.ndarray] = None
 
         # Control parameters
-        self.adds_since_last = 0
-        self.cooldown = 30                   
+        self.adds_since_last: int = 0
+        self.cooldown: int = 30
 
     # ────────────────────────────────────────────────
     # Internal helpers
     # ────────────────────────────────────────────────
 
-    def _invalidate_cache(self):
+    def _invalidate_cache(self) -> None:
         self._data_cache = None
-        self.data_unit = None               # Always clear so _rebuild_index recreates it
+        self.data_unit = None
 
-    def _get_data(self):
+    def _get_data(self) -> np.ndarray:
         if self._data_cache is None:
             if self.vectors:
                 self._data_cache = np.stack(self.vectors)
@@ -47,7 +54,7 @@ class CosmoHoloScale:
                 self._data_cache = np.empty((0, self.dim))
         return self._data_cache
 
-    def calculate_info_density(self):
+    def calculate_info_density(self) -> float:
         if len(self.vectors) < 3:
             return 0.0
         data = self._get_data()
@@ -61,7 +68,7 @@ class CosmoHoloScale:
         max_entropy = self.dim * np.log(2 * np.pi * np.e) * np.log(len(self.vectors) + 1)
         return max(0.0, min(1.0, entropy / max_entropy))
 
-    def _rebuild_index(self):
+    def _rebuild_index(self) -> None:
         if len(self.vectors) < 2:
             self.index = None
             self.data_unit = None
@@ -80,7 +87,7 @@ class CosmoHoloScale:
     # Core operations
     # ────────────────────────────────────────────────
 
-    def add_vector(self, vec):
+    def add_vector(self, vec: Union[np.ndarray, List[float]]) -> None:
         vec = np.asarray(vec, dtype=float).flatten()[:self.dim]
         vec = np.pad(vec, (0, self.dim - len(vec)))
 
@@ -99,11 +106,11 @@ class CosmoHoloScale:
         else:
             self._rebuild_index()
 
-    def add_batch(self, vectors):
+    def add_batch(self, vectors: Union[List[np.ndarray], np.ndarray]) -> None:
         for vec in vectors:
             self.add_vector(vec)
 
-    def activate_dark_energy_mode(self):
+    def activate_dark_energy_mode(self) -> None:
         old_capacity = self.capacity
         data = self._get_data()
         old_sum = float(np.sum(np.linalg.norm(data, axis=1))) if len(self.vectors) > 0 else 0.0
@@ -116,10 +123,10 @@ class CosmoHoloScale:
         horizons_before = len(self.horizons)
 
         if len(self.vectors) > 15:
-            compress_start = int(len(self.vectors) * 0.72)
+            compress_start = int(len(self.vectors) * 0.72)  # keep ~72% as exact, compress the oldest ~28%
             old_data = data[compress_start:, :]
             U, S, Vh = svd(old_data, full_matrices=False)
-            k = max(1, int(len(S) * 0.5))
+            k = max(1, int(len(S) * 0.5))  # keep top 50% singular values for a low-rank approximation
             projections = U[:, :k] * S[:k]
             components = Vh[:k, :]
             boundary_mean = np.mean(old_data, axis=0)
@@ -147,13 +154,20 @@ class CosmoHoloScale:
                 f"Saved ≈ {compression_loss + dark_energy_rebate:.1f}"
             )
 
-    def query(self, query_vec, top_k=5):
+    def query(
+        self, query_vec: Union[np.ndarray, List[float]], top_k: int = 5
+    ) -> List[Tuple[np.ndarray, float, Optional[str]]]:
+        """Query nearest neighbors, optionally tagging source ('live' or 'horizon').
+
+        Returns list of (vector, distance, source) where source is None for live vectors,
+        or 'horizon' for reconstructed ones.
+        """
         q = np.asarray(query_vec, dtype=float).flatten()[:self.dim]
         q = np.pad(q, (0, self.dim - len(q)))
         q_norm = norm(q)
         q_unit = q / q_norm if q_norm > 0 else q
 
-        results = []
+        results: List[Tuple[np.ndarray, float, Optional[str]]] = []
 
         # Live vectors via KDTree
         if self.index is not None:
@@ -163,7 +177,7 @@ class CosmoHoloScale:
                 idx = np.atleast_1d(idx[0])
                 for i in idx:
                     dist = 1.0 if q_norm == 0 else 1 - float(np.dot(q_unit, self.data_unit[i]))
-                    results.append((self.vectors[i], dist))
+                    results.append((self.vectors[i], dist, None))
             else:
                 data = self._get_data()
                 k = min(top_k * 2, len(self.vectors))
@@ -171,7 +185,7 @@ class CosmoHoloScale:
                 idx = np.atleast_1d(idx[0])
                 for i in idx:
                     dist = float(norm(q - data[i]))
-                    results.append((self.vectors[i], dist))
+                    results.append((self.vectors[i], dist, None))
         else:
             # fallback linear scan
             for v in self.vectors:
@@ -180,7 +194,7 @@ class CosmoHoloScale:
                     dist = 1.0 if q_norm == 0 or v_norm == 0 else 1 - float(np.dot(q_unit, v / v_norm))
                 else:
                     dist = float(norm(q - v))
-                results.append((v, dist))
+                results.append((v, dist, None))
 
         # Holographic reconstructions
         for proj, comp, bmean in self.horizons[-4:]:
@@ -191,12 +205,12 @@ class CosmoHoloScale:
                 dist = 1.0 if q_norm == 0 or recon_norm == 0 else 1 - float(np.dot(q_unit, recon / recon_norm))
             else:
                 dist = float(norm(q - recon))
-            results.append((recon, dist * 0.7))
+            results.append((recon, dist * 0.7, "horizon"))
 
         results.sort(key=lambda x: x[1])
         return results[:top_k]
 
-    def reconstruct_from_horizon(self, horizon_idx=-1):
+    def reconstruct_from_horizon(self, horizon_idx: int = -1) -> Optional[np.ndarray]:
         if not self.horizons:
             return None
         proj, comp, bmean = self.horizons[horizon_idx]
@@ -206,23 +220,29 @@ class CosmoHoloScale:
     # Serialization — WARNING: pickle is not safe for untrusted files
     # ────────────────────────────────────────────────
 
-    def to_state(self):
+    def to_state(self) -> Dict:
         data = self._get_data()
         return {
-            "capacity": self.capacity, "dim": self.dim, "vectors": data,
-            "horizons": self.horizons, "expansions": self.expansions,
-            "total_cost": self.total_cost, "original_total": self.original_total,
-            "use_cosine": self.use_cosine, "adds_since_last": self.adds_since_last,
-            "cooldown": self.cooldown, "verbose": self.verbose,
+            "capacity": self.capacity,
+            "dim": self.dim,
+            "vectors": data,
+            "horizons": self.horizons,
+            "expansions": self.expansions,
+            "total_cost": self.total_cost,
+            "original_total": self.original_total,
+            "use_cosine": self.use_cosine,
+            "adds_since_last": self.adds_since_last,
+            "cooldown": self.cooldown,
+            "verbose": self.verbose,
         }
 
     @classmethod
-    def from_state(cls, state):
+    def from_state(cls, state: Dict) -> 'CosmoHoloScale':
         obj = cls(
             initial_capacity=state["capacity"],
             dim=state["dim"],
             use_cosine=state["use_cosine"],
-            verbose=state.get("verbose", True)
+            verbose=state.get("verbose", True),
         )
         data = np.asarray(state["vectors"], dtype=float)
         obj.vectors = [row.copy() for row in data]
@@ -236,19 +256,19 @@ class CosmoHoloScale:
         obj._rebuild_index()
         return obj
 
-    def save(self, filepath="cosmoholoscale.pkl"):
+    def save(self, filepath: str = "cosmoholoscale.pkl") -> None:
         state = self.to_state()
         with open(filepath, 'wb') as f:
             pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"Saved to {filepath}  (Note: pickle is not safe for untrusted files)")
 
     @classmethod
-    def load(cls, filepath="cosmoholoscale.pkl"):
+    def load(cls, filepath: str = "cosmoholoscale.pkl") -> 'CosmoHoloScale':
         with open(filepath, 'rb') as f:
             state = pickle.load(f)
         return cls.from_state(state)
 
-    def get_status(self):
+    def get_status(self) -> Dict[str, Union[float, int]]:
         efficiency = 100 * max(0.0, (self.original_total - self.total_cost)) / self.original_total if self.original_total > 0 else 0.0
         return {
             "capacity": round(self.capacity, 2),
@@ -280,6 +300,6 @@ if __name__ == "__main__":
 
     q = np.random.normal(0, 1, 32)
     results = ch.query(q, top_k=3)
-    print("\nSample query results (vector, distance):")
-    for vec, dist in results:
-        print(f"  → distance = {dist:.4f}")
+    print("\nSample query results (vector, distance, source):")
+    for vec, dist, source in results:
+        print(f"  → distance = {dist:.4f}, source = {source}")
