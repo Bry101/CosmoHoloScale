@@ -47,3 +47,27 @@ Run `python cosmoholoscale.py` for a full random-vector demo that shows expansio
 4. **Queries** search both live vectors **and** the last few holographic horizons. Old data is approximate but still reachable.
 
 Result: the memory can grow forever without ever saying “out of memory.”
+
+## Design notes / Caveats
+
+### Cosine / Euclidean semantics
+- When `use_cosine=True` (default), the KDTree is built on **unit-normalized** vectors.  
+  Returned distances = **1 − cosine similarity** (cosine distance on the unit sphere).  
+- When `use_cosine=False`, plain Euclidean distance on raw vectors is used.
+
+### Lossy holographic compression
+Older data is **intentionally compressed** via truncated SVD.  
+The tail of the stream is replaced by a mean vector + stored low-rank projections.  
+- This is deliberately lossy — exact retrieval of individual old vectors is sacrificed for unbounded capacity.  
+- Queries can still access approximate reconstructions (with a small distance bonus).  
+
+**Trade-off:** better long-term retention vs. perfect short-term recall.
+
+### Performance notes
+- KDTree rebuilds are currently eager (fine up to ~5–10k vectors).  
+- No dedicated ANN index yet (HNSW/IVF/FAISS) — roadmap item.
+
+### Serialization warning
+`save()` / `load()` use Python’s `pickle` for convenience.  
+**Do not load files from untrusted sources** — pickle can execute arbitrary code.  
+(The internal `to_state()` / `from_state()` API makes swapping formats easy later.)
