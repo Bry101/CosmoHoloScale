@@ -14,3 +14,22 @@ Proof-of-concept adaptive vector store that grows capacity like an expanding uni
 
 ```bash
 pip install numpy scipy
+
+```python
+import numpy as np
+from cosmoholoscale import CosmoHoloScale
+
+mem = CosmoHoloScale(dim=384, use_cosine=True)   # e.g. for sentence embeddings
+
+# Add vectors (single or batch)
+mem.add_vector(np.random.randn(384))
+mem.add_batch([np.random.randn(384) for _ in range(100)])
+
+# Query
+results = mem.query(np.random.randn(384), top_k=5)
+for vec, dist in results:
+    print(f"distance: {dist:.4f}")
+
+print(mem.get_status())
+
+
